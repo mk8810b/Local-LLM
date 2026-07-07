@@ -10,6 +10,7 @@ import {
   formatBytes,
   type Conversation,
 } from "./storage";
+import { CacheManager } from "./ui/cache-manager";
 import { ChatView } from "./ui/chat";
 import { HistoryDrawer } from "./ui/history-drawer";
 import { ModelPicker } from "./ui/model-picker";
@@ -17,6 +18,10 @@ import { ProgressBar } from "./ui/progress";
 import { t } from "./i18n";
 
 type State = "idle" | "loading" | "ready" | "generating";
+
+// モデル読み込み開始時に立て、成功/失敗(JSエラー)で消すフラグ。
+// アプリ起動時に残っていた場合、前回はSafariごと落ちた(=OOM)と判断できる。
+const LOAD_FLAG_KEY = "local-llm/load-in-progress";
 
 export class App {
   private state: State = "idle";
@@ -37,6 +42,7 @@ export class App {
   private progress = new ProgressBar();
   private chat = new ChatView();
   private drawer = new HistoryDrawer();
+  private cacheManager = new CacheManager();
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -83,6 +89,18 @@ export class App {
     main.append(this.picker.el, this.progress.el, this.chat.el);
     this.root.appendChild(this.drawer.el);
 
+    // 前回タブごと落ちていた場合の案内(フラグが残っている=読み込み中にクラッシュ)
+    if (localStorage.getItem(LOAD_FLAG_KEY)) {
+      localStorage.removeItem(LOAD_FLAG_KEY);
+      const warn = document.createElement("p");
+      warn.className = "crash-notice";
+      warn.setAttribute("data-testid", "crash-notice");
+      warn.textContent = t.crashRecovery;
+      this.picker.el.prepend(warn);
+    }
+    this.picker.el.appendChild(this.cacheManager.el);
+    this.cacheManager.onChanged = () => this.updateStorageEstimate();
+
     this.statusEl = this.root.querySelector(".status")!;
     this.inputEl = this.root.querySelector("textarea")!;
     this.sendBtn = this.root.querySelector('[data-testid="send"]')!;
@@ -120,6 +138,7 @@ export class App {
         this.progress.hide();
         this.chat.hide();
         this.footerEl.classList.add("hidden");
+        void this.cacheManager.refresh();
         break;
       case "loading":
         this.statusEl.textContent = t.loading;
@@ -147,6 +166,7 @@ export class App {
   private async loadModel(modelId: string): Promise<void> {
     if (!this.engine || this.state === "loading") return;
     this.setState("loading");
+    localStorage.setItem(LOAD_FLAG_KEY, modelId);
     try {
       await this.engine.load(modelId, (p) =>
         this.progress.update(p.progress, p.text),
@@ -171,6 +191,9 @@ export class App {
           ? `${t.loadError}\n${t.oomSuggestion}`
           : `${t.loadError}\n${detail}`,
       );
+    } finally {
+      // JSエラーで生き残った場合はフラグを消す。タブごと落ちた場合だけ残る
+      localStorage.removeItem(LOAD_FLAG_KEY);
     }
   }
 
