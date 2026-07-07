@@ -14,10 +14,54 @@ test("モデル選択画面が表示される", async ({ page }) => {
   await expect(page).toHaveTitle(/ローカルLLM/);
   await expect(page.getByTestId("model-select")).toBeVisible();
   await expect(page.getByTestId("load-model")).toBeVisible();
-  // デフォルトはQwen2.5 1.5B
+  // デフォルトは軽量なQwen2.5 0.5B(メモリの少ないiPhoneでも動くように)
   await expect(page.getByTestId("model-select")).toHaveValue(
-    "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
+    "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
   );
+});
+
+test("ダウンロード済みデータの管理欄が表示される", async ({ page }) => {
+  // ダミーのモデルキャッシュを作っておく
+  await page.goto("?mock=1");
+  await page.evaluate(async () => {
+    const cache = await caches.open("webllm/model");
+    await cache.put(
+      "https://example.com/mlc-ai/Qwen2.5-0.5B-Instruct-q4f16_1-MLC/params_shard_0.bin",
+      new Response("dummy"),
+    );
+  });
+  await page.reload();
+
+  const manager = page.getByTestId("cache-manager");
+  await expect(manager).toContainText("ダウンロード済みデータの管理");
+  const row = manager.locator(".cache-row", { hasText: "軽量" });
+  await expect(row).toContainText("保存データあり");
+
+  // 削除するとステータスが「なし」に変わり、全削除ボタンも消える
+  page.on("dialog", (d) => d.accept());
+  await row.getByRole("button", { name: "削除" }).click();
+  await expect(manager.locator(".cache-row", { hasText: "軽量" })).toContainText(
+    "保存データなし",
+  );
+  await expect(manager.locator(".cache-delete-all")).toHaveCount(0);
+});
+
+test("読み込み中のクラッシュ後に案内が表示される", async ({ page }) => {
+  await page.goto("?mock=1");
+  // アプリの初期化完了を待ってからフラグを立てる(先に立てると初回描画が消費してしまう)
+  await expect(page.getByTestId("load-model")).toBeVisible();
+  // 読み込み中フラグが残っている状態(=前回タブごと落ちた)を再現
+  await page.evaluate(() => {
+    localStorage.setItem(
+      "local-llm/load-in-progress",
+      "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
+    );
+  });
+  await page.reload();
+  await expect(page.getByTestId("crash-notice")).toContainText("軽量");
+  // 一度表示したら次回は出ない
+  await page.reload();
+  await expect(page.getByTestId("crash-notice")).toHaveCount(0);
 });
 
 test("モデル読込→チャット送信→ストリーミング応答", async ({ page }) => {

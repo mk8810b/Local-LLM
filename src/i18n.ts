@@ -26,6 +26,16 @@ export const t = {
     "メモリが不足した可能性があります。「軽量」モデルに切り替えて再度お試しください。",
   loadError: "モデルの読み込みに失敗しました",
   genError: "生成中にエラーが発生しました",
+  crashRecovery:
+    "前回のモデル読み込みが最後まで完了しませんでした。メモリ不足でSafariが再読み込みした可能性があります。「軽量」モデルをお試しください。",
+  manageTitle: "ダウンロード済みデータの管理",
+  cachePresent: "保存データあり",
+  cacheAbsent: "保存データなし",
+  deleteAllCaches: "すべてのモデルデータを削除",
+  confirmDeleteModel: (label: string) =>
+    `「${label}」のモデルデータを削除しますか?(会話履歴は残ります)`,
+  confirmDeleteAll:
+    "すべてのモデルデータを削除しますか?(会話履歴は残ります)",
   storageUsage: (used: string, quota: string) => `ストレージ使用量: ${used} / ${quota}`,
   confirmDelete: "この会話を削除しますか?",
   systemPrompt:
